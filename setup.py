@@ -23,9 +23,9 @@ def read_requirements(filename):
 NAME = 'gerapy-playwright'
 FOLDER = 'gerapy_playwright'
 DESCRIPTION = 'Playwright Components for Scrapy & Gerapy'
-URL = 'https://github.com/Gerapy/GerapyPlaywright'
-EMAIL = 'cqc@cuiqingcai.com'
-AUTHOR = 'Germey'
+URL = 'https://github.com/fffoobibi/GerapyPlaywright'
+EMAIL = '1564002691@qq.com'
+AUTHOR = 'fffoobibi'
 REQUIRES_PYTHON = '>=3.6.0'
 VERSION = None
 

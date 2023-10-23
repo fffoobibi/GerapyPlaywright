@@ -7,7 +7,7 @@ class PlaywrightRequest(Request):
     Scrapy ``Request`` subclass providing additional arguments
     """
 
-    def __init__(self, url, callback=None, wait_until=None, wait_for=None, script=None, actions=None, proxy=None,
+    def __init__(self, url, callback=None, wait_until=None, wait_for=None, script=None, actions=None, proxy=None, after_scraped=None,after_scraped_args=None,
                  proxy_credential=None, sleep=None, timeout=None, ignore_resource_types=None, pretend=None, screenshot=None, meta=None,
                  *args, **kwargs):
         """
@@ -52,6 +52,10 @@ class PlaywrightRequest(Request):
             'pretend') is not None else pretend
         self.timeout = playwright_meta.get('timeout') if playwright_meta.get(
             'timeout') is not None else timeout
+        self.after_scraped = playwright_meta.get('after_scraped') if playwright_meta.get(
+            'after_scraped') is not None else after_scraped
+        self.after_scraped_args = playwright_meta.get('after_scraped_args') if playwright_meta.get(
+            'after_scraped_args') is not None else after_scraped_args
         # self.ignore_resource_types = playwright_meta.get('ignore_resource_types') if playwright_meta.get(
         #     'ignore_resource_types') is not None else ignore_resource_types
         self.screenshot = playwright_meta.get('screenshot') if playwright_meta.get(
@@ -68,6 +72,8 @@ class PlaywrightRequest(Request):
         playwright_meta['pretend'] = self.pretend
         playwright_meta['timeout'] = self.timeout
         playwright_meta['screenshot'] = self.screenshot
+        playwright_meta['after_scraped'] = self.after_scraped
+        playwright_meta['after_scraped_args'] = self.after_scraped_args
         # playwright_meta['ignore_resource_types'] = self.ignore_resource_types
 
         super().__init__(url, callback, meta=meta, *args, **kwargs)

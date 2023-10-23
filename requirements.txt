@@ -1,2 +1,5 @@
-scrapy>=2.0.0,<3.0.0
-playwright>=1.17.2,<2.0.0
+scrapy==2.9.0
+playwright==1.30
+scrapy_redis==0.7.3
+peewee
+pymysql
