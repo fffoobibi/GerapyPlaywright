@@ -8,8 +8,8 @@ from scrapy import Spider
 
 class ScrapydUtils(object):
     def __init__(self):
-        self.spider: Spider = None
         self.start_time: int = time.time()
+        self.spider: Spider = None
         self.scrapyd_url: str = None
         self.logger = None
         self.project_name: str = None
@@ -23,10 +23,10 @@ class ScrapydUtils(object):
 
     def get_sys_info(self):
         memory_info = psutil.virtual_memory()
-        total_memory = memory_info.total / (1024 ** 3)  # 转换为GB
-        available_memory = memory_info.available / (1024 ** 3)  # 转换为GB
-        used_memory = memory_info.used / (1024 ** 3)  # 转换为GB
-        free_memory = memory_info.free / (1024 ** 3)  # 转换为GB
+        total_memory = memory_info.total / (1024 ** 3)
+        available_memory = memory_info.available / (1024 ** 3)
+        used_memory = memory_info.used / (1024 ** 3)
+        free_memory = memory_info.free / (1024 ** 3)
         return {
             "total_memory": total_memory,
             "available_memory": available_memory,
@@ -58,10 +58,12 @@ class ScrapydUtils(object):
         self.spider = spider
         self.logger = spider.logger
         if project_name is None:
+            self.logger.info("load SCRAPYD_PROJECT_NAME from settings")
             self.project_name = spider.crawler.settings.get('SCRAPYD_PROJECT_NAME', '')
         else:
             self.project_name = project_name
         if scrapyd_address is None:
+            self.logger.info("load SCRAPYD_URL from settings")
             self.scrapyd_url = spider.crawler.settings.get('SCRAPYD_URL', '').strip('/')
         else:
             self.scrapyd_url = scrapyd_address.strip('/')
@@ -89,15 +91,32 @@ class ScrapydUtils(object):
             self.restart()
 
     def schedule_spider(self):
-        schedule_url = self._get_url('schedule')
-        self.logger.info("schedule spider: %s", self.spider.name)
-        resp = requests.post(schedule_url, data={"project": self.project_name, "spider": self.spider.name}).json()
-        self.logger.info("schedule resp: %s", resp)
-        return resp
+        if not self.scrapyd_url:
+            self.logger.warn('not set scrapyd url, please use scrapyd manage your scrapy projects')
+            import subprocess, os, sys
+            from pathlib import Path
+            project_directory = os.getcwd()
+            spider_name = self.spider.name
+            scrapy_path = Path(sys.executable).parent.joinpath('scrapy').absolute().__str__()
+            command = [scrapy_path, 'crawl', spider_name]
+            try:
+                subprocess.check_call(command, cwd=project_directory)
+            except subprocess.CalledProcessError as e:
+                self.logger.error(f"Error running Scrapy spider: {e}")
+        else:
+            schedule_url = self._get_url('schedule')
+            self.logger.info("schedule spider: %s", self.spider.name)
+            resp = requests.post(schedule_url, data={"project": self.project_name, "spider": self.spider.name}).json()
+            self.logger.info("schedule resp: %s", resp)
+            return resp
 
     def stop_spider(self):
         self.logger.info("stop spider: %s", self.spider.name)
-        stop_url = self._get_url('stop')
-        resp = requests.post(stop_url, data={"project": self.project_name, "job": self._get_job_id()}).json()
-        self.logger.info("stop resp: %s", resp)
-        return resp
+        if not self.scrapyd_url:
+            self.logger.warn('not set scrapyd url, please use scrapyd manage your scrapy projects')
+            self.spider.crawler.engine.close_spider(self.spider, 'stop spider by signal')
+        else:
+            stop_url = self._get_url('stop')
+            resp = requests.post(stop_url, data={"project": self.project_name, "job": self._get_job_id()}).json()
+            self.logger.info("stop resp: %s", resp)
+            return resp

@@ -21,17 +21,28 @@ async def execute_action(page):
     await page.evaluate('() => { document.title = "Hello World"; }')
     return 1
 
+from gerapy_playwright.scrapyd_utils import ScrapydUtils
 
 class BookSpider(scrapy.Spider):
     name = 'book'
     allowed_domains = ['spa5.scrape.center']
     base_url = 'https://spa5.scrape.center'
 
+    loop_settings = {
+        'enabled': True,
+        'frequen': 60
+    }
+
+    def loop_task(self):
+        self.utils: ScrapydUtils
+        self.utils.restart_when(run_gr=120)
+
     def start_requests(self):
         """
         first page
         :return:
         """
+        self.utils = ScrapydUtils().init_spider(self)
         start_url = f'{self.base_url}/page/1'
         logger.info('crawling %s', start_url)
         yield PlaywrightRequest(start_url, callback=self.parse_index, actions=execute_action, wait_for='.item .name', script=js)
