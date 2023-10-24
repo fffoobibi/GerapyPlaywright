@@ -1,80 +1,103 @@
+import time
+
 import requests
 import atexit
-
-__all__ = ('init_prate', 'update_prate')
-
-
-# def _list_projects(logger):
-#     # http://localhost:6800/listprojects.json
-#     resp = requests.get("http://127.0.0.1:6900/listprojects.json")
-#     logger.info("projects: %s", resp.json())
+import psutil
+from scrapy import Spider
 
 
-def _list_jobs(spider):
-    url = spider.scrapyd_url
-    list_job = spider.scrapyd_url_info['listjobs']
-    resp = requests.get(url.strip('/') + list_job)
-    data = resp.json()
-    spider.logger.info("list jobs: %s", data)
-    return data
+class ScrapydUtils(object):
+    def __init__(self):
+        self.spider: Spider = None
+        self.start_time: int = time.time()
+        self.scrapyd_url: str = None
+        self.logger = None
+        self.project_name: str = None
+        self.job_id: str = None
+        self.scrapyd_url_info = {
+            'stop': '/cancel.json',
+            'listprojects': '/listprojects.json',
+            'listjobs': '/listjobs.json',
+            'schedule': '/schedule.json'
+        }
 
+    def get_sys_info(self):
+        memory_info = psutil.virtual_memory()
+        total_memory = memory_info.total / (1024 ** 3)  # 转换为GB
+        available_memory = memory_info.available / (1024 ** 3)  # 转换为GB
+        used_memory = memory_info.used / (1024 ** 3)  # 转换为GB
+        free_memory = memory_info.free / (1024 ** 3)  # 转换为GB
+        return {
+            "total_memory": total_memory,
+            "available_memory": available_memory,
+            "used_memory": used_memory,
+            "free_memory": free_memory,
+            "memory_percent": memory_info.percent,
+            "cpu_percent": psutil.cpu_percent()
+        }
 
-def _restart_spider(spider, project: str):
-    # curl http://localhost:6800/schedule.json -d project=myproject -d spider=spider_name
-    url = spider.scrapyd_url
-    schedule = spider.scrapyd_url_info['schedule']
-    schedule_url = url.strip('/') + schedule
-    spider.logger.info("schedule spider: %s", spider.name)
-    resp = requests.post(schedule_url, data={"project": project, "spider": spider.name}).json()
-    spider.logger.info("schedule resp: %s", resp)
-    return resp
+    def _list_jobs(self):
+        self.logger.info("list jobs: %s", self.spider.name)
+        url = self._get_url('listjobs')
+        resp = requests.get(url)
+        return resp.json()
 
+    def _get_url(self, key: str):
+        return self.scrapyd_url + self.scrapyd_url_info.get(key)
 
-def _stop_spider(job_id: str, spider, project: str):
-    # curl http://localhost:6800/cancel.json -d project=myproject -d job=6487ec79947edab326d6db28a2d86511e8247444
-    url = spider.scrapyd_url
-    stop_job = spider.scrapyd_url_info['stop']
-    spider_name = spider.name
-    logger = spider.logger
-    logger.info("stop spider: %s", spider_name)
-    stop_url = url.strip('/') + stop_job
-    resp = requests.post(stop_url, data={"project": project, "job": job_id}).json()
-    logger.info("stop resp: %s", resp)
-    return resp
+    def _get_job_id(self):
+        if self.job_id is None:
+            data = self._list_jobs()
+            for d in data.get("running", []):
+                if d["project"] == self.project_name and d["spider"] == self.spider.name:
+                    self.job_id = d["id"]
+                    break
+        return self.job_id
 
+    def init_spider(self, spider: Spider, project_name: str = None, scrapyd_address: str = None):
+        self.spider = spider
+        self.logger = spider.logger
+        if project_name is None:
+            self.project_name = spider.crawler.settings.get('SCRAPYD_PROJECT_NAME', '')
+        else:
+            self.project_name = project_name
+        if scrapyd_address is None:
+            self.scrapyd_url = spider.crawler.settings.get('SCRAPYD_URL', '').strip('/')
+        else:
+            self.scrapyd_url = scrapyd_address.strip('/')
 
-def init_prate(spider, scrapyd_url: str):
-    spider.prate = 0
-    spider.pages_prev = 0
-    spider.scrapyd_url = scrapyd_url
-    spider.scrapyd_url_info = {
-        'stop': '/cancel.json',
-        'listprojects': '/listprojects.json',
-        'listjobs': '/listjobs.json',
-        'schedule': '/schedule.json'
-    }
-    spider.logger.info('init prate, pages_prev, scrapyd_url: %s, %s, %s', spider.prate, spider.pages_prev, scrapyd_url)
+    def restart(self):
+        self.logger.info('restart spider: %s', self.spider.name)
+        atexit.unregister(self.schedule_spider)
+        atexit.register(self.schedule_spider)
+        for i in range(5):
+            self.stop_spider()
 
+    def restart_when(self, memory_used_percent_gr: float = 80, run_gr: int = 24 * 3600):
+        sys_info = self.get_sys_info()
+        self.logger.info("system info: %s", sys_info)
+        current_percent = sys_info.get('memory_percent')
+        if current_percent >= memory_used_percent_gr:
+            f1 = True
+        else:
+            f1 = False
+        if time.time() - self.start_time >= run_gr:
+            f2 = True
+        else:
+            f2 = False
+        if f1 or f2:
+            self.restart()
 
-def update_prate(spider, scrapyd_project: str, restart: bool = True):
-    self = spider
-    pages = self.crawler.stats.get_value("response_received_count", 0)
-    prate = pages - self.pages_prev
-    self.pages_prev = pages
-    self.logger.info("%s crawl %s pages/min", spider.name, prate)
-    if prate == 0:
-        self.logger.info("try to stop crawl")
-        if restart:
-            try:
-                atexit.unregister(_restart_spider)
-            except:
-                pass
-            atexit.register(_restart_spider, spider, scrapyd_project)
-        data = _list_jobs(spider)
-        for d in data.get("running", []):
-            if d["project"] == scrapyd_project and d["spider"] == self.name:
-                _stop_spider(d["id"], self, scrapyd_project)
-                _stop_spider(d["id"], self, scrapyd_project)
-                _stop_spider(d["id"], self, scrapyd_project)
-                _stop_spider(d["id"], self, scrapyd_project)
-                break
+    def schedule_spider(self):
+        schedule_url = self._get_url('schedule')
+        self.logger.info("schedule spider: %s", self.spider.name)
+        resp = requests.post(schedule_url, data={"project": self.project_name, "spider": self.spider.name}).json()
+        self.logger.info("schedule resp: %s", resp)
+        return resp
+
+    def stop_spider(self):
+        self.logger.info("stop spider: %s", self.spider.name)
+        stop_url = self._get_url('stop')
+        resp = requests.post(stop_url, data={"project": self.project_name, "job": self._get_job_id()}).json()
+        self.logger.info("stop resp: %s", resp)
+        return resp
