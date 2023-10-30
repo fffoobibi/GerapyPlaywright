@@ -267,7 +267,9 @@ class RawPlaywrightMiddleware(object):
 
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(**options)
-            context = await browser.new_context()
+            context = await browser.new_context(
+                user_agent=_user_agent
+            )
             # viewport={"width": self.window_width, "height": self.window_height},
             # user_agent=_user_agent,
 
@@ -445,7 +447,7 @@ class RawPlaywrightMiddleware(object):
         logger.debug("processing request %s", request)
         return as_deferred(self._process_request(request, spider))
 
-    def spider_closed(self):
+    def spider_closed(self, spider, reason):
         """
         callback when spider closed
         :return:
@@ -538,7 +540,7 @@ class PlaywrightMiddleware(RawPlaywrightMiddleware):
         logger.debug("Browser options: %s", options)
 
         browser = await self.playwright.chromium.launch(**options)
-        context = await browser.new_context()
+        context = await browser.new_context(user_agent=_user_agent)
 
         # set cookies
         parse_result = urllib.parse.urlsplit(request.url)
@@ -713,7 +715,7 @@ class PlaywrightMiddleware(RawPlaywrightMiddleware):
     def clean_up(self):
         return as_deferred(self._cleanup())
 
-    def spider_closed(self):
+    def spider_closed(self, spider, reason):
         """
         callback when spider closed
         :return:
@@ -809,7 +811,7 @@ class MultiContextPlaywrightMiddleware(MultiBrowserPlaywrightMiddleware):
         logger.debug("Browser options: %s", options)
 
         browser = self.browser
-        context = await browser.new_context(proxy=context_proxy)
+        context = await browser.new_context(proxy=context_proxy, user_agent=_user_agent)
 
         # set cookies
         parse_result = urllib.parse.urlsplit(request.url)

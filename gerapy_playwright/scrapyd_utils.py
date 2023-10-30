@@ -54,7 +54,9 @@ class ScrapydUtils(object):
                     break
         return self.job_id
 
-    def init_spider(self, spider: Spider, project_name: str = None, scrapyd_address: str = None):
+    @classmethod
+    def init_spider(cls, spider: Spider, project_name: str = None, scrapyd_address: str = None):
+        self = cls()
         self.spider = spider
         self.logger = spider.logger
         if project_name is None:
@@ -67,15 +69,16 @@ class ScrapydUtils(object):
             self.scrapyd_url = spider.crawler.settings.get('SCRAPYD_URL', '').strip('/')
         else:
             self.scrapyd_url = scrapyd_address.strip('/')
+        return self
 
-    def restart(self):
+    def restart(self, stop_count: int = 5):
         self.logger.info('restart spider: %s', self.spider.name)
         atexit.unregister(self.schedule_spider)
         atexit.register(self.schedule_spider)
-        for i in range(5):
+        for i in range(stop_count):
             self.stop_spider()
 
-    def restart_when(self, memory_used_percent_gr: float = 80, run_gr: int = 24 * 3600):
+    def restart_when(self, memory_used_percent_gr: float = 80, run_gr: int = 24 * 3600, stop_count: int = 5):
         sys_info = self.get_sys_info()
         self.logger.info("system info: %s", sys_info)
         current_percent = sys_info.get('memory_percent')
@@ -88,7 +91,7 @@ class ScrapydUtils(object):
         else:
             f2 = False
         if f1 or f2:
-            self.restart()
+            self.restart(stop_count)
 
     def schedule_spider(self):
         if not self.scrapyd_url:
