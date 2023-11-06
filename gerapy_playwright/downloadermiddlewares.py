@@ -19,6 +19,8 @@ from gerapy_playwright.pretend import SCRIPTS as PRETEND_SCRIPTS
 from gerapy_playwright.settings import *
 from gerapy_playwright.utils import install_playwright, is_playwright_installed
 
+from playwright_stealth.stealth import stealth_async
+
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
@@ -295,8 +297,9 @@ class RawPlaywrightMiddleware(object):
 
             if _pretend:
                 logger.debug("try to pretend webdriver for url %s", request.url)
-                for script in PRETEND_SCRIPTS:
-                    await page.add_init_script(script=script)
+                # for script in PRETEND_SCRIPTS:
+                #     await page.add_init_script(script=script)
+                await stealth_async(page)
 
             block_resources = self.ignore_resources or playwright_meta.get(
                 "ignore_resource_types"
@@ -564,8 +567,9 @@ class PlaywrightMiddleware(RawPlaywrightMiddleware):
 
         if _pretend:
             logger.debug("try to pretend webdriver for url %s", request.url)
-            for script in PRETEND_SCRIPTS:
-                await page.add_init_script(script=script)
+            # for script in PRETEND_SCRIPTS:
+            #     await page.add_init_script(script=script)
+            await stealth_async(page)
 
         block_resources = self.ignore_resources or playwright_meta.get(
             "ignore_resource_types"
@@ -835,8 +839,9 @@ class MultiContextPlaywrightMiddleware(MultiBrowserPlaywrightMiddleware):
 
         if _pretend:
             logger.debug("try to pretend webdriver for url %s", request.url)
-            for script in PRETEND_SCRIPTS:
-                await page.add_init_script(script=script)
+            # for script in PRETEND_SCRIPTS:
+            #     await page.add_init_script(script=script)
+            await stealth_async(page)
 
         block_resources = self.ignore_resources or playwright_meta.get(
             "ignore_resource_types"

@@ -4,3 +4,4 @@ scrapy_redis==0.7.3
 peewee
 pymysql
 psutil
+playwright-stealth
