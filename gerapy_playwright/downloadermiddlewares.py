@@ -1004,6 +1004,7 @@ class MultiContextPlaywrightMiddleware(MultiBrowserPlaywrightMiddleware):
 
 class ListenPortMultiContextPlaywrightMiddleware(MultiContextPlaywrightMiddleware):
 
+
     async def _process_request(self, request, spider):
         """
         use playwright to process spider
@@ -1131,27 +1132,28 @@ class ListenPortMultiContextPlaywrightMiddleware(MultiContextPlaywrightMiddlewar
         logger.debug("crawling %s", request.url)
 
         response = None
-        rsp_content = None
-        rsp_status = None
         try:
             options = {"url": request.url}
             if playwright_meta.get("wait_until"):
                 options["wait_until"] = playwright_meta.get("wait_until")
             if playwright_meta.get("referer"):
                 options["referer"] = playwright_meta["referer"]
+            # if playwright_meta.get("listen_port"):
+            #     options["listen_port"] = playwright_meta["listen_port"]
             if playwright_meta.get("listen_timeout"):
                 options["page_timeout"] = playwright_meta["listen_timeout"]
             logger.debug("request %s with options %s", request.url, options)
-
+            rsp_content = None
+            rsp_status = None
             async with page.expect_request(
-                    lambda resp: resp.url.startswith(playwright_meta["listen_port"])) as response_info:
+                lambda resp: resp.url.startswith(playwright_meta["listen_port"])) as response_info:
                 response = await page.goto(**options)
             rsp_response = await (await response_info.value).response()
             rsp_status = rsp_response.status
             try:
                 rsp_content = await rsp_response.text()
             except:
-                spider.logger.error('wait for listen text fail', exc_info=True)
+                pass
         except (PlaywrightTimeoutError, PlaywrightError):
             logger.exception(
                 "error rendering url %s using playwright", request.url, exc_info=True
