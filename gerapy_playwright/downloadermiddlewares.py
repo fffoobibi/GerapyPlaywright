@@ -1004,7 +1004,6 @@ class MultiContextPlaywrightMiddleware(MultiBrowserPlaywrightMiddleware):
 
 class ListenPortMultiContextPlaywrightMiddleware(MultiContextPlaywrightMiddleware):
 
-
     async def _process_request(self, request, spider):
         """
         use playwright to process spider
@@ -1146,7 +1145,7 @@ class ListenPortMultiContextPlaywrightMiddleware(MultiContextPlaywrightMiddlewar
             rsp_content = None
             rsp_status = None
             async with page.expect_request(
-                lambda resp: resp.url.startswith(playwright_meta["listen_port"])) as response_info:
+                    lambda resp: resp.url.startswith(playwright_meta["listen_port"])) as response_info:
                 response = await page.goto(**options)
             rsp_response = await (await response_info.value).response()
             rsp_status = rsp_response.status
@@ -1262,3 +1261,316 @@ class ListenPortMultiContextPlaywrightMiddleware(MultiContextPlaywrightMiddlewar
             response.meta['listen_result'] = (rsp_content, rsp_status)
 
         return response
+
+
+class ListenPortPersistenceMultiContextPlaywrightMiddleware(MultiContextPlaywrightMiddleware):
+    page_lock: asyncio.Semaphore = None
+    _pages = []
+    _current_requests = None
+    max_visit_num: int = None
+    page_event: asyncio.Event = None
+
+    def __init__(self):
+        super().__init__()
+        self.context = None
+        self.visits_num = 0
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        """
+        init the middleware
+        :param crawler:
+        :return:
+        """
+        middleware = super().from_crawler(crawler)
+        settings = crawler.settings
+        middleware.page_lock = asyncio.Semaphore(settings.get('CONCURRENT_REQUESTS'))
+        middleware._current_requests = settings.get('CONCURRENT_REQUESTS')
+        middleware.max_visit_num = settings.get('MAX_VISIT_NUM', 500)
+        middleware.page_event = asyncio.Event()
+        return middleware
+
+    async def get_page(self, pretend, block_resources, request):
+        if not self._pages:
+            async with self.lock:
+                if not self._pages:
+                    for index in range(self._current_requests):
+                        page = await self.context.new_page()
+                        page.work = False
+                        page.event = asyncio.Event()
+                        logger.info('Create Persistence Page: %s', index + 1)
+                        if pretend:
+                            logger.debug("try to pretend webdriver for url %s", request.url)
+                            await stealth_async(page)
+                        if block_resources:
+                            async def intercept(route, request_):
+                                if request_.resource_type in block_resources:
+                                    await route.abort()
+                                else:
+                                    await route.continue_()
+
+                            await page.route("**/*", intercept)
+                        self._pages.append(page)
+
+        for page in self._pages:
+            if page.work is False:
+                page.work = True
+                page.event.clear() # in work
+                return page
+
+    async def _process_request(self, request, spider):
+        """
+        use playwright to process spider
+        :param request:
+        :param spider:
+        :return:
+        """
+        # get playwright meta
+        playwright_meta = request.meta.get("playwright") or {}
+        logger.debug("playwright_meta %s", playwright_meta)
+        if not isinstance(playwright_meta, dict) or len(playwright_meta.keys()) == 0:
+            return
+
+        options = {
+            "headless": self.headless,
+            "args": [],
+        }
+        if self.executable_path is not None:
+            options["executablePath"] = self.executable_path
+        if self.slow_mo is not None:
+            options["slowMo"] = self.slow_mo
+        if self.devtools is not None:
+            options["devtools"] = self.devtools
+        if self.channel is not None:
+            options["channel"] = self.channel
+        if self.disable_extensions is not None:
+            options["args"].append("--disable-extensions")
+        if self.hide_scrollbars is not None:
+            options["args"].append("--hide-scrollbars")
+        if self.mute_audio is not None:
+            options["args"].append("--mute-audio")
+        if self.no_sandbox is not None:
+            options["args"].append("--no-sandbox")
+        if self.disable_setuid_sandbox is not None:
+            options["args"].append("--disable-setuid-sandbox")
+        if self.disable_gpu is not None:
+            options["args"].append("--disable-gpu")
+
+        # pretend as normal browser
+        _pretend = self.pretend  # get global pretend setting
+        if playwright_meta.get("pretend") is not None:
+            # get local pretend setting to overwrite global
+            _pretend = playwright_meta.get("pretend")
+
+        # set proxy and proxy credential
+        _proxy = self.proxy
+        if playwright_meta.get("proxy") is not None:
+            _proxy = playwright_meta.get("proxy")
+        if _proxy:
+            options["proxy"] = {"server": _proxy}
+        _proxy_credential = self.proxy_credential
+        if playwright_meta.get("proxy_credential") is not None:
+            _proxy_credential = playwright_meta.get("proxy_credential")
+        if _proxy_credential and _proxy:
+            options["proxy"].update(_proxy_credential)
+
+        logger.debug("set options %s", options)
+        context_proxy = options.pop("proxy", None)
+
+        # set default user_agent
+        _user_agent = self.default_user_agent
+        # get Scrapy request ua, exclude default('Scrapy/2.5.0 (+https://scrapy.org)')
+        if "Scrapy" not in request.headers.get("User-Agent").decode():
+            _user_agent = request.headers.get("User-Agent").decode()
+
+        if self.playwright is None:
+            async with self.lock:
+                if self.playwright is None:
+                    self.playwright = await async_playwright().start()
+                if self.browser is None:
+                    self.browser = await self.playwright.chromium.launch(**options)
+                if self.context is None:
+                    self.context = await self.browser.new_context(proxy=context_proxy, user_agent=_user_agent)
+
+        logger.debug("Browser options: %s", options)
+
+        if self.visits_num >= self.max_visit_num:
+            async with self.lock:
+                if self.visits_num >= self.max_visit_num:
+                    for page in self._pages:
+                        if page.work is False:
+                            await page.close()
+                        else:
+                            await page.event.wait()
+                            await page.close()
+
+                    await self.context.close()
+                    self.context = None
+                    await self.browser.close()
+                    self.browser = None
+                    self._pages.clear()
+                    self.browser = await self.playwright.chromium.launch(**options)
+                    self.context = await self.browser.new_context(proxy=context_proxy, user_agent=_user_agent)
+                    self.visits_num = 0
+
+        async with self.page_lock:
+            block_resources = self.ignore_resources or playwright_meta.get("ignore_resource_types")
+
+            # set cookies
+            parse_result = urllib.parse.urlsplit(request.url)
+            domain = parse_result.hostname
+            _cookies = []
+            if isinstance(request.cookies, dict):
+                _cookies = [
+                    {"name": k, "value": v, "domain": domain, "path": "/"}
+                    for k, v in request.cookies.items()
+                ]
+            else:
+                for _cookie in _cookies:
+                    if isinstance(_cookie, dict) and "domain" not in _cookie.keys():
+                        _cookie["domain"] = domain
+                    if isinstance(_cookie, dict) and "path" not in _cookie.keys():
+                        _cookie["path"] = "/"
+            if len(_cookies):
+                await self.context.add_cookies(_cookies)
+
+            page = await self.get_page(_pretend, block_resources, request)
+
+            # set timeout
+            _timeout = self.download_timeout
+            if playwright_meta.get("timeout") is not None:
+                _timeout = playwright_meta.get("timeout")
+            # timeout is `ms` instead of `s`, so need to multiply 1000
+            page.set_default_timeout(_timeout * 1000)
+
+            logger.debug("crawling %s", request.url)
+
+            response = None
+            try:
+                options = {"url": request.url}
+                if playwright_meta.get("wait_until"):
+                    options["wait_until"] = playwright_meta.get("wait_until")
+                if playwright_meta.get("referer"):
+                    options["referer"] = playwright_meta["referer"]
+                # if playwright_meta.get("listen_port"):
+                #     options["listen_port"] = playwright_meta["listen_port"]
+                if playwright_meta.get("listen_timeout"):
+                    options["page_timeout"] = playwright_meta["listen_timeout"]
+                logger.debug("request %s with options %s", request.url, options)
+                rsp_content = None
+                rsp_status = None
+                async with page.expect_request(
+                        lambda resp: resp.url.startswith(playwright_meta["listen_port"])) as response_info:
+                    response = await page.goto(**options)
+                rsp_response = await (await response_info.value).response()
+                rsp_status = rsp_response.status
+                try:
+                    rsp_content = await rsp_response.text()
+                except:
+                    pass
+            except (PlaywrightTimeoutError, PlaywrightError):
+                logger.exception(
+                    "error rendering url %s using playwright", request.url, exc_info=True
+                )
+                # await page.close()
+                # await context.close()
+                spider.logger.info('context_close')
+                return self._retry(request, 504, spider)
+            except Exception:
+                spider.logger.exception("error in middware", exc_info=True)
+
+            # wait for dom loaded
+            if playwright_meta.get("wait_for"):
+                _wait_for = playwright_meta.get("wait_for")
+                try:
+                    logger.debug("waiting for %s of url %s", _wait_for, request.url)
+                    if isinstance(_wait_for, dict):
+                        await page.wait_for_selector(**_wait_for)
+                    else:
+                        await page.wait_for_selector(_wait_for)
+                except PlaywrightTimeoutError:
+                    logger.error("error waiting for %s of %s", _wait_for, request.url)
+                    # await page.close()
+                    # await context.close()
+                    spider.logger.info('context_close')
+                    return self._retry(request, 504, spider)
+
+            _actions_result = None
+            # evaluate actions
+            if playwright_meta.get("actions"):
+                _actions = playwright_meta.get("actions")
+                logger.debug("evaluating %s", _actions)
+                _actions_result = await _actions(page)
+
+            _script_result = None
+            # evaluate script
+            if playwright_meta.get("script"):
+                _script = playwright_meta.get("script")
+                logger.debug("evaluating %s", _script)
+                _script_result = await page.evaluate(_script)
+
+            # sleep
+            _sleep = self.sleep
+            if playwright_meta.get("sleep") is not None:
+                _sleep = playwright_meta.get("sleep")
+            if _sleep is not None and _sleep is not 0:
+                logger.debug("sleep for %ss of url %s", _sleep, request.url)
+                await asyncio.sleep(_sleep)
+
+            content = await page.content()
+            response_url = page.url
+
+            # screenshot
+            _screenshot = self.screenshot
+            if playwright_meta.get("screenshot") is not None:
+                _screenshot = playwright_meta.get("screenshot")
+            screenshot = None
+            if _screenshot:
+                logger.debug(
+                    "taking screenshot using args %s of url %s", _screenshot, request.url
+                )
+                screenshot = await page.screenshot(**_screenshot)
+                if isinstance(screenshot, bytes):
+                    screenshot = BytesIO(screenshot)
+
+            _after_scraped_result = None
+            if playwright_meta.get("after_scraped") is not None:
+                _after_scraped = playwright_meta.get("after_scraped")
+                if isinstance(_after_scraped, str):
+                    _after_scraped = getattr(spider, _after_scraped)
+                args = playwright_meta["after_scraped_args"] or ()
+                logger.debug("execute %s callback, args: %s", _after_scraped.__name__, args)
+                _after_scraped_result = await _after_scraped(page, *args)
+
+            if not response:
+                logger.error("get null response by playwright of url %s", request.url)
+
+            # Necessary to bypass the compression middleware
+            headers = response.headers
+            headers.pop("content-encoding", None)
+            headers.pop("Content-Encoding", None)
+
+            page.work = False
+            page.event.set()
+            self.visits_num += 1
+
+            response = HtmlResponse(
+                response_url,
+                status=response.status,
+                headers=headers,
+                body=content,
+                encoding="utf-8",
+                request=request,
+            )
+            if _script_result:
+                response.meta["script_result"] = _script_result
+            if _actions_result:
+                response.meta["actions_result"] = _actions_result
+            if screenshot:
+                response.meta["screenshot"] = screenshot
+            if _after_scraped_result is not None:
+                response.meta["after_result"] = _after_scraped_result
+            if rsp_content is not None:
+                response.meta['listen_result'] = (rsp_content, rsp_status)
+
+            return response
