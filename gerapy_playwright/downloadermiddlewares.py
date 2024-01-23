@@ -1314,6 +1314,7 @@ class ListenPortPersistenceMultiContextPlaywrightMiddleware(MultiContextPlaywrig
         for page in self._pages:
             if page.work is False:
                 page.work = True
+                page.request_count += 1
                 page.event.clear()  # in work
                 return page
 
