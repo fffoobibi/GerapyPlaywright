@@ -1142,17 +1142,23 @@ class ListenPortMultiContextPlaywrightMiddleware(MultiContextPlaywrightMiddlewar
             if playwright_meta.get("listen_timeout"):
                 options["page_timeout"] = playwright_meta["listen_timeout"]
             logger.debug("request %s with options %s", request.url, options)
-            rsp_content = None
-            rsp_status = None
-            async with page.expect_request(
-                    lambda resp: resp.url.startswith(playwright_meta["listen_port"])) as response_info:
+            if playwright_meta.get("listen_port"):
+                rsp_content = None
+                rsp_status = None
+                async with page.expect_request(
+                        lambda resp: resp.url.startswith(playwright_meta["listen_port"])) as response_info:
+                    response = await page.goto(**options)
+                rsp_response = await (await response_info.value).response()
+                rsp_status = rsp_response.status
+                try:
+                    if rsp_status == 200:
+                        rsp_content = await rsp_response.text()
+                    else:
+                        pass
+                except:
+                    pass
+            else:
                 response = await page.goto(**options)
-            rsp_response = await (await response_info.value).response()
-            rsp_status = rsp_response.status
-            try:
-                rsp_content = await rsp_response.text()
-            except:
-                pass
         except (PlaywrightTimeoutError, PlaywrightError):
             logger.exception(
                 "error rendering url %s using playwright", request.url, exc_info=True
@@ -1466,7 +1472,10 @@ class ListenPortPersistenceMultiContextPlaywrightMiddleware(MultiContextPlaywrig
                     rsp_response = await (await response_info.value).response()
                     rsp_status = rsp_response.status
                     try:
-                        rsp_content = await rsp_response.text()
+                        if rsp_status == 200:
+                            rsp_content = await rsp_response.text()
+                        else:
+                            pass
                     except:
                         pass
                 except (PlaywrightTimeoutError, PlaywrightError):
