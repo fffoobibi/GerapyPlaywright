@@ -2,6 +2,15 @@ from subprocess import Popen, PIPE
 from playwright.async_api import async_playwright
 from os.path import exists
 import functools
+from gerapy_playwright.request import PlaywrightRequest
+
+
+def copy_from_request(request, **playwright_kwargs) -> PlaywrightRequest:
+    kwargs = {}
+    for x in request.attributes:
+        kwargs.setdefault(x, getattr(request, x))
+    kwargs.update(playwright_kwargs)
+    return PlaywrightRequest(**kwargs)
 
 
 def bytes2str(data):
