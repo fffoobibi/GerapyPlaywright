@@ -1403,6 +1403,7 @@ class ListenPortPersistenceMultiContextPlaywrightMiddleware(MultiContextPlaywrig
         if self.visits_num >= self.max_visit_num:
             async with self.lock:
                 if self.visits_num >= self.max_visit_num:
+                    spider.logger.info('restart all pages, current visit num: %s', self.visits_num)
                     for page in self._pages:
                         if page.work is False:
                             await page.close()
@@ -1478,16 +1479,16 @@ class ListenPortPersistenceMultiContextPlaywrightMiddleware(MultiContextPlaywrig
                             pass
                     except:
                         pass
-                except (PlaywrightTimeoutError, PlaywrightError):
+                except (PlaywrightTimeoutError, PlaywrightError) as e:
                     logger.exception(
                         "error rendering url %s using playwright", request.url, exc_info=True
                     )
                     # await page.close()
                     # await context.close()
-                    spider.logger.info('context_close')
+                    spider.logger.info('render fail, retry: %s', e)
                     return self._retry(request, 504, spider)
                 except Exception:
-                    spider.logger.exception("error in middware", exc_info=True)
+                    spider.logger.exception("error in middleware", exc_info=True)
 
                 # wait for dom loaded
                 if playwright_meta.get("wait_for"):
