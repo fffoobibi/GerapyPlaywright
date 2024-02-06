@@ -1408,8 +1408,16 @@ class ListenPortPersistenceMultiContextPlaywrightMiddleware(MultiContextPlaywrig
                         if page.work is False:
                             await page.close()
                         else:
-                            await page.event.wait()
-                            await page.close()
+                            spider.logger.info('等待页面完成task')
+                            try:
+                                await asyncio.wait_for(page.event.wait(), 30)
+                                # await page.event.wait()
+                                spider.logger.info('页面完成task, 关闭')
+                                await page.close()
+                            except asyncio.TimeoutError:
+                                spider.logger.info('等待超时, 关闭')
+                                await page.event.clear()
+                                await page.close()
                     spider.logger.info('restart browser success!')
                     await self.context.close()
                     self.context = None
@@ -1591,3 +1599,5 @@ class ListenPortPersistenceMultiContextPlaywrightMiddleware(MultiContextPlaywrig
                     self.visits_num += 1
                 except Exception as e:
                     logger.error(f'page release state error: %s', e)
+
+
