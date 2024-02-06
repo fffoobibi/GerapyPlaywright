@@ -1410,7 +1410,7 @@ class ListenPortPersistenceMultiContextPlaywrightMiddleware(MultiContextPlaywrig
                         else:
                             await page.event.wait()
                             await page.close()
-
+                    spider.logger.info('restart browser success!')
                     await self.context.close()
                     self.context = None
                     await self.browser.close()
