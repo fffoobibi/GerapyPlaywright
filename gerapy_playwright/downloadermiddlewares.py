@@ -1131,6 +1131,8 @@ class ListenPortMultiContextPlaywrightMiddleware(MultiContextPlaywrightMiddlewar
         logger.debug("crawling %s", request.url)
 
         response = None
+        rsp_content = None
+        rsp_status = None
         try:
             options = {"url": request.url}
             if playwright_meta.get("wait_until"):
@@ -1143,8 +1145,6 @@ class ListenPortMultiContextPlaywrightMiddleware(MultiContextPlaywrightMiddlewar
                 options["page_timeout"] = playwright_meta["listen_timeout"]
             logger.debug("request %s with options %s", request.url, options)
             if playwright_meta.get("listen_port"):
-                rsp_content = None
-                rsp_status = None
                 async with page.expect_request(
                         lambda resp: resp.url.startswith(playwright_meta["listen_port"])) as response_info:
                     response = await page.goto(**options)
@@ -1599,5 +1599,3 @@ class ListenPortPersistenceMultiContextPlaywrightMiddleware(MultiContextPlaywrig
                     self.visits_num += 1
                 except Exception as e:
                     logger.error(f'page release state error: %s', e)
-
-
