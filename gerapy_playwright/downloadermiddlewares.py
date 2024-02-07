@@ -1416,7 +1416,7 @@ class ListenPortPersistenceMultiContextPlaywrightMiddleware(MultiContextPlaywrig
                                 await page.close()
                             except asyncio.TimeoutError:
                                 spider.logger.info('等待超时, 关闭')
-                                await page.event.clear()
+                                # await page.event.clear()
                                 await page.close()
                     spider.logger.info('restart browser success!')
                     await self.context.close()
