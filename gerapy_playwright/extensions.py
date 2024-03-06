@@ -1,5 +1,62 @@
+import typing
+import inspect
 from scrapy import signals
 from twisted.internet.task import LoopingCall
+
+
+class SpiderArgsExtension(object):
+    @classmethod
+    def from_crawler(cls, crawler):
+        settings = crawler.settings
+        ext = cls(settings)
+        crawler.signals.connect(ext.spider_opened, signal=signals.spider_opened)
+        crawler.signals.connect(ext.spider_closed, signal=signals.spider_closed)
+        return ext
+
+    def __init__(self, settings):
+        self.settings = settings
+
+    def spider_opened(self, spider):
+        extract_args = inspect.get_annotations(spider.__class__)
+        for arg, arg_type in extract_args.items():
+            if arg.startswith('arg_'):
+                from_spider = getattr(spider, arg, None)
+                arg_value = spider.settings.get(arg)
+                if arg_value is None and from_spider is None:
+                    set_val = None
+                    setattr(spider, arg, None)
+                else:
+                    if arg_type.__module__ == 'builtins':
+                        # set_val = arg_type(arg_value or from_spider)
+                        set_val = eval(f'{arg_value or from_spider}')
+                    else:
+                        set_val = eval(f'{arg_value or from_spider}')
+                    setattr(spider, arg, set_val)
+                spider.logger.info('set %s value -> %s', arg, set_val)
+
+    def spider_closed(self, spider):
+        pass
+
+
+class DataBaseExtension(object):
+    @classmethod
+    def from_crawler(cls, crawler):
+        settings = crawler.settings
+        ext = cls()
+        crawler.signals.connect(ext.spider_opened, signal=signals.spider_opened)
+        crawler.signals.connect(ext.spider_closed, signal=signals.spider_closed)
+        return ext
+
+    def __init__(self, settings):
+        self.settings = settings
+
+    def spider_opened(self, spider):
+        if getattr(spider, 'ext_init_database', None):
+            spider.ext_init_database()
+
+    def spider_closed(self, spider):
+        if getattr(spider, 'ext_close_database', None):
+            spider.ext_close_database()
 
 
 class LoopingTaskExtension(object):
@@ -22,7 +79,7 @@ class LoopingTaskExtension(object):
 
     def spider_opened(self, spider):
         loop_settings = getattr(spider, "loop_settings", {})
-        
+
         spider_enabled = loop_settings.get("enabled", False)
         spider_frequency = loop_settings.get("frequency", 0)
         spider_run_now = loop_settings.get("run_now", False)
