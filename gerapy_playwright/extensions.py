@@ -4,7 +4,7 @@ from scrapy import signals
 from twisted.internet.task import LoopingCall
 
 
-class SpiderArgsExtension(object):
+class BaseExtension(object):
     @classmethod
     def from_crawler(cls, crawler):
         settings = crawler.settings
@@ -15,6 +15,15 @@ class SpiderArgsExtension(object):
 
     def __init__(self, settings):
         self.settings = settings
+
+    def spider_opened(self, spider):
+        pass
+
+    def spider_closed(self, spider):
+        pass
+
+
+class SpiderArgsExtension(BaseExtension):
 
     def spider_opened(self, spider):
         extract_args = inspect.get_annotations(spider.__class__)
@@ -29,7 +38,13 @@ class SpiderArgsExtension(object):
                     if arg_type.__module__ == 'builtins':
                         if arg_type == str:
                             arg_value = f'"{arg_value}"'
-                        set_val = eval(f'{arg_value or from_spider}')
+                            if from_spider is None:
+                                eval_val = f'{arg_value or None}'
+                            else:
+                                eval_val = arg_value or f'"{from_spider}"'
+                        else:
+                            eval_val = f'{arg_value or from_spider}'
+                        set_val = eval(eval_val)
                     else:
                         set_val = eval(f'{arg_value or from_spider}')
                     setattr(spider, arg, set_val)
@@ -39,25 +54,23 @@ class SpiderArgsExtension(object):
         pass
 
 
-class DataBaseExtension(object):
-    @classmethod
-    def from_crawler(cls, crawler):
-        settings = crawler.settings
-        ext = cls()
-        crawler.signals.connect(ext.spider_opened, signal=signals.spider_opened)
-        crawler.signals.connect(ext.spider_closed, signal=signals.spider_closed)
-        return ext
-
-    def __init__(self, settings):
-        self.settings = settings
+class DataBaseExtension(BaseExtension):
 
     def spider_opened(self, spider):
-        if getattr(spider, 'ext_init_database', None):
-            spider.ext_init_database()
+        if getattr(spider, 'ext_database_init', None):
+            spider.ext_database_init()
 
     def spider_closed(self, spider):
-        if getattr(spider, 'ext_close_database', None):
-            spider.ext_close_database()
+        if getattr(spider, 'ext_database_close', None):
+            spider.ext_database_close()
+
+
+class ExitPythonExtension(BaseExtension):
+
+    def spider_opened(self, spider):
+        if getattr(self, spider, 'ext_python_exit', None):
+            rs = spider.ext_python_exit()
+            spider.logger.info('call ext_python_exit: %s', rs)
 
 
 class LoopingTaskExtension(object):
