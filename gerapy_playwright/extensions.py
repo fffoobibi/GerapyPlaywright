@@ -27,7 +27,8 @@ class SpiderArgsExtension(object):
                     setattr(spider, arg, None)
                 else:
                     if arg_type.__module__ == 'builtins':
-                        # set_val = arg_type(arg_value or from_spider)
+                        if arg_type == str:
+                            arg_value = f'"{arg_value}"'
                         set_val = eval(f'{arg_value or from_spider}')
                     else:
                         set_val = eval(f'{arg_value or from_spider}')
