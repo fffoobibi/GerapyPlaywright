@@ -1,3 +1,4 @@
+import atexit
 import typing
 import inspect
 from scrapy import signals
@@ -69,8 +70,7 @@ class ExitPythonExtension(BaseExtension):
 
     def spider_opened(self, spider):
         if getattr(self, spider, 'ext_python_exit', None):
-            rs = spider.ext_python_exit()
-            spider.logger.info('call ext_python_exit: %s', rs)
+            atexit.register(spider.ext_python_exit)
 
 
 class LoopingTaskExtension(object):
