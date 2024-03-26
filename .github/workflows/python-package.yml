@@ -27,11 +27,11 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: Build
       env: 
-        auth: ${{secrets.auth}}
-        passwd: ${{secrets.passwd}}
+        auth: ${{secrets.AUTH}}
+        passwd: ${{secrets.PASSWD}}
       run: |
         python setup.py sdist
         version=$(awk -F"[()]" '/^VERSION/ { printf("%s.%s.%s\n", $2, $4, $6); }' ./gerapy_playwright/__version__.py)
-        mv ./dist/gerapy-playwright-$version.tar.gz ./dist/gerapy-playwright.tar.gz
+        cp ./dist/gerapy-playwright-$version.tar.gz ./dist/gerapy-playwright.tar.gz
         curl -u "$auth:$passwd" -F file=@./dists/gerapy-playwright.tar.gz -F "upload_location=/" http://36.32.174.26:5002/upload
         echo "success!"
