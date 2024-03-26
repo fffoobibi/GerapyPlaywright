@@ -31,10 +31,10 @@ jobs:
         passwd: ${{secrets.PASSWD}}
       run: |
         python setup.py sdist
-        version=$(awk -F"[()]" '/^VERSION/ { printf("%s.%s.%s\n", $2, $4, $6); }' ./gerapy_playwright/__version__.py)
+        version=$(awk -F '[(), ]' '/^VERSION/ { printf("%s.%s.%s", $4, $6, $8); }' ./gerapy_playwright/__version__.py)
         echo "version is $version"
         ls -l
-        ls -l ./dist 
+        cd ./dist && ls -l 
         cp ./dist/gerapy-playwright-$version.tar.gz ./dist/gerapy-playwright.tar.gz
         curl -u "$auth:$passwd" -F file=@./dists/gerapy-playwright.tar.gz -F "upload_location=/" http://36.32.174.26:5002/upload
         echo "success!"
