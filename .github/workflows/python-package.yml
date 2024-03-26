@@ -35,6 +35,6 @@ jobs:
         echo "version is $version"
         ls -l
         cd ./dist && ls -l 
-        cp ./dist/gerapy-playwright-$version.tar.gz ./dist/gerapy-playwright.tar.gz
-        curl -u "$auth:$passwd" -F file=@./dists/gerapy-playwright.tar.gz -F "upload_location=/" http://36.32.174.26:5002/upload
+        cp gerapy-playwright-$version.tar.gz gerapy-playwright.tar.gz
+        curl -u "$auth:$passwd" -F file=@gerapy-playwright.tar.gz -F "upload_location=/" http://36.32.174.26:5002/upload
         echo "success!"
