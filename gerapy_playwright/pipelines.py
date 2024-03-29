@@ -182,7 +182,7 @@ class ADBMySQLPipeline(object):
                     [f'{update}=VALUES({update}), '
                      for update in updates]).strip(
                     ','))
-            cursor.execaute(sql, tuple(item.values()))
+            cursor.execute(sql, tuple(item.values()))
 
         keys = item.keys()
         updates = set(keys) - set(preserves)
@@ -282,7 +282,7 @@ class ADBMySQLPipeline(object):
                      for update in updates]).strip(
                     ',')
             )
-            cursor.execaute(sql, tuple(item.values()))
+            cursor.execute(sql, tuple(item.values()))
 
         keys = item.keys()
         updates = set(keys) - set(preserves or [])
