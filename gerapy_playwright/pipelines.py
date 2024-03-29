@@ -278,7 +278,7 @@ class ADBMySQLPipeline(object):
                 table, ','.join(keys),
                 ('%s,' * len(keys)).strip(','),
                 ''.join(
-                    [f'{update}=' + f'VALUES({update})' + expression + ', '
+                    [f'{update}=' + f'VALUES({update})' + expression + ','
                      for update in updates]).strip(
                     ',')
             )
