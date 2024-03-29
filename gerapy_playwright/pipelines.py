@@ -261,3 +261,33 @@ class ADBMySQLPipeline(object):
         if logger is not None:
             defer_.addErrback(lambda err: self._log_db(logger, err, 'delete'))
         return defer_
+
+    def add_upsert(self,
+                   item: dict,
+                   preserves: List[str] = None,
+                   table: str = None,
+                   expression: str = '',
+                   logger: typing.Optional[logging.Logger] = None):
+        """
+        插入或更新
+        preserves: 不需要更新的字段
+        """
+
+        def _do_insert_or_update(cursor, table: str, keys: List[str], updates: List[str]):
+            sql = "INSERT INTO %s(%s) VALUES(%s) ON DUPLICATE KEY UPDATE %s" % (
+                table, ','.join(keys),
+                ('%s,' * len(keys)).strip(','),
+                ''.join(
+                    [f'{update}=' + f'VALUES({update})' + expression + ', '
+                     for update in updates]).strip(
+                    ',')
+            )
+            cursor.execaute(sql, tuple(item.values()))
+
+        keys = item.keys()
+        updates = set(keys) - set(preserves or [])
+        defer_ = self.db.runInteraction(_do_insert_or_update, table or self.table,
+                                        keys, updates)
+        if logger is not None:
+            defer_.addErrback(lambda err: self._log_db(logger, err, 'upsert'))
+        return defer_
