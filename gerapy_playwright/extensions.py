@@ -39,17 +39,24 @@ class SpiderArgsExtension(BaseExtension):
                     if arg_type.__module__ == 'builtins':
                         if arg_type == str:
                             arg_value = f'"{arg_value}"'
+                            # spider.logger.info('args ==>? %s', arg_value)
+                            # spider.logger.info('from ==>? %s', from_spider)
                             if from_spider is None:
                                 eval_val = f'{arg_value or None}'
                             else:
-                                eval_val = arg_value or f'"{from_spider}"'
+                                if arg_value == '"None"' or arg_value == '""':
+                                    eval_val = f'"{from_spider}"'
+                                else:
+                                    eval_val = arg_value or f'"{from_spider}"'
+                                # eval_val = arg_value or f'"{from_spider}"'
+                                # spider.logger.info('here ==>? %s', eval_val)
                         else:
                             eval_val = f'{arg_value or from_spider}'
                         set_val = eval(eval_val)
                     else:
                         set_val = eval(f'{arg_value or from_spider}')
                     setattr(spider, arg, set_val)
-                spider.logger.info('set %s value -> %s', arg, set_val)
+                spider.logger.info('%s -> %s', arg, set_val)
 
     def spider_closed(self, spider):
         pass
